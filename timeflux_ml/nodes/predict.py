@@ -12,12 +12,34 @@ class Predict(Node):
     """   Applies final step of pipeline .
 
     This node loads a scikit pipeline saved in the Registry.
-    When it receives data, it reshape it using the specified ``stack_method`` and calls the predict method.
+    When it receives data, it reshapes it using the specified ``stack_method`` and calls the predict method.
     It adds a field in the meta with key ``meta_key`` and value the prediction.
 
     Attributes:
         i (Port): default input, expects DataFrame and meta.
         o (Port): default output, provides DataFrame and meta.
+
+
+    Example:
+
+        In this example, we  show a non-adaptive ERP online classifier.
+
+        The following graph replays a set of EEG data and the corresponding events stream.
+
+        We choose the following riemannian pipeline:
+
+            - ERPCovariances
+            - Projection on TangentSpace
+            - Logistic Regression
+
+        In this case, there is of course need for epoching before (``receives_epoch`` = `True`), and for target labelling (``has_targets`` =`True`)
+        and the data should be concatenated on the first axis (``stack_method`` = `0`) to ensure that X is of shape  of shape (n_trials, n_channels, n_samples) as expected from first transformation step instance.
+
+
+        The corresponding graph is:
+
+        .. literalinclude:: /../../timeflux_ml/test/graphs/fit_predict1.yaml
+           :language: yaml
 
 
     References:

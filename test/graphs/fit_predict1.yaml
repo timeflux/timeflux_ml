@@ -1,0 +1,126 @@
+graphs:
+
+  - id: Broker
+    nodes:
+    - id: proxy
+      module: timeflux.nodes.zmq
+      class: Broker
+    rate: 0
+
+  - id: Replay
+    nodes:
+    - id: replay
+      module: timeflux.nodes.hdf5
+      class: Replay
+      params:
+        filename: 'test/tmp/data_raw_eeg.hdf5'
+        keys:
+        - /eeg/signal/preproc
+        - /p300/events
+        timespan: 0.5
+
+    - id: pub_signal
+      module: timeflux.nodes.zmq
+      class: Pub
+      params:
+        topic: 'eeg_signal_preproc'
+    - id: pub_events
+      module: timeflux.nodes.zmq
+      class: Pub
+      params:
+        topic: 'p300_events'
+
+    edges:
+    - source: replay:eeg_signal_preproc
+      target: pub_signal
+    - source: replay:p300_events
+      target: pub_events
+
+  - id: erp_prediction
+    nodes:
+    - id: sub
+        module: timeflux.nodes.zmq
+        class: Sub
+        params:
+          topics: ["p300_events", "eeg_signal_preproc" ]
+
+    # epochs the signal around the onset of the flash trigger with 0.2s before and 0.6s after.
+    - id: epoch
+      module: timeflux.nodes.epoch
+      class: Epoch
+      params:
+        event_trigger: "p300_flash_begins"
+        before: .2
+        after: .6
+        event_label: "label"
+        event_data: "data"
+
+    # to suit the requirements of ERPCovariances that expects X of shape (n_trials, n_channels, n_samples)
+    - id: transpose
+      module: timeflux.nodes.expression
+      class: Expression
+      params:
+        expr: "i_1.T"
+        eval_on: "ports"
+
+    # accumulate training data
+        # stacks epoch on first axis to assure X of shape (n_trials, n_channels, n_samples)
+        # accumulate training targets in y
+    # fit the model and save it in the Registry
+    - id: fit
+      module: timeflux_ml.nodes.fit
+      class: Fit
+      params:
+        event_begins: "p300_calibration_phase_begins"
+        event_ends: "p300_calibration_phase_ends"
+        event_label: "label"
+        stack_method: 0
+        has_targets: True
+        receives_epochs: True
+        registry_key: "pipe_ERPCovariance_TS"
+        context_key: "is_target"
+        steps_config:
+          -
+            - "cov"
+            - "ERPCovariances"
+            - "pyriemann.estimation"
+          -
+            - "proj"
+            - "TangentSpace"
+            - "pyriemann.tangentspace"
+          -
+            - "clf"
+            - "LogisticRegression"
+            - "pyriemann.classification"
+
+        fit_params:
+          cov__estimator : "oas"
+          proj__metric: "riemann"
+
+    # Once the model is available in the Registry, transform epochs and predicts the label.
+    - id: predict
+      module: timeflux_ml.nodes.predict
+      class: Predict
+      params:
+        stack_method: 0
+        registry_key: "pipe_ERPCovariance_TS"
+        meta_key: "prediction_ERPCovariance_TS"
+
+    - id: display
+      module: timeflux.nodes.debug
+      class: Display
+
+    edges:
+    - source: sub:eeg_signal_preproc
+      target: epoch
+    - source: epoch
+      target: transpose:1
+    - source: sub:p300_events
+      target: epoch:events
+    - source: sub:p300_events
+      target: fit:events
+    - source: transpose
+      target: fit
+    - source: transpose
+      target: predict
+    rate: 10
