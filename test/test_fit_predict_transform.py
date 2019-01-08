@@ -1,9 +1,7 @@
 import pandas as pd
 import numpy as np
 import pytest
-
-
-from timeflux.test import helpers
+from . import helpers
 from timeflux.nodes.epoch import Epoch
 from timeflux.core.registry import Registry
 from timeflux_ml.nodes.fit import Fit
@@ -17,7 +15,7 @@ from timeflux_ml.nodes.predict import Predict
 #------------------------------------------------------
 def test_invalid_input():
     # test wrong syntax for module/method
-    with pytest.raises((ValueError)):
+    with pytest.raises(ValueError):
         node = Fit(event_begins="accumulation_begins", event_ends="accumulation_ends", event_label="label",
                    stack_method="vstack",
                    steps_config=("scaler", "MinMaxScalerr", "sklearn.preprocessing"),
@@ -27,7 +25,7 @@ def test_invalid_input():
                    registry_key="test_scaler")
 
     # test invalid syntax for params
-    with pytest.raises((ValueError)):
+    with pytest.raises(ValueError):
         node = Fit(event_begins="accumulation_begins", event_ends="accumulation_ends", event_label="label",
                    stack_method="vstack",
                    steps_config=("scaler", "MinMaxScaler", "sklearn.preprocessing"),
