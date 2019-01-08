@@ -57,7 +57,7 @@ class Transform(Node):
 
         It results in:
 
-        .. image:: /../../timeflux_ml/doc/static/image/fittransform_io1.png
+        .. image:: /../../timeflux_ml/doc/static/image/fittransform_io1.svg
            :align: center
 
         Where:
@@ -127,7 +127,7 @@ class Transform(Node):
 
         if (self._model is None) & (not hasattr(Registry, self._registry_key)) :
             self.o.data = None
-            print(self._registry_key + " not in registry")
+
         elif (self._model is None) & (hasattr(Registry, self._registry_key)):
             self._model = getattr(Registry, self._registry_key)
 
@@ -138,7 +138,7 @@ class Transform(Node):
 
                     _X = self._stack([self.i.data.values])
                     self.o.data = pd.DataFrame(data = np.squeeze(self._model["values"].transform(_X)))
-                    # TODO: handle case were transformations lead to a NDArray (N>2), using XArray.
+                    # TODO: Handle cases were transformations lead to a NDArray (N>2), using XArray.
                     if self._set_index:
                         self.o.data.index = self.i.data.index
                     if self._set_columns:

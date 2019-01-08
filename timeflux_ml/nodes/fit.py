@@ -94,24 +94,24 @@ class Fit(Node):
 
     def _init_model(self):
         if not([len(steps) for steps in self._steps_config] == [3]*len(self._steps_config)):
-            raise (ValueError, "Parameter steps should be a list of (name, module_name, transform_name) tuples")
+            raise ValueError ("Parameter steps should be a list of (name, module_name, transform_name) tuples")
 
         self._steps = []
         for (name, transform_name, module_name) in self._steps_config:
             try:
                 m = import_module(module_name)
             except ImportError:
-                raise (ImportError, "Could not import module {module_name}".format(module_name=module_name))
+                raise ImportError ("Could not import module {module_name}".format(module_name=module_name))
             try:
                 transform = getattr(m, transform_name)()
             except AttributeError:
-                raise(AttributeError, "Module {module_name} has no object {transform_name}".format(module_name=module_name, transform_name=transform_name))
+                raise ValueError ("Module {module_name} has no object {transform_name}".format(module_name=module_name, transform_name=transform_name))
             self._steps.append((name, transform))
         self._pipeline = Pipeline(steps=self._steps, memory=self._memory)
         try:
             self._pipeline.set_params(**self._fit_params)
         except ValueError:
-            raise(ValueError, "")
+            raise ValueError  ("Could not set params of pipeline. Check the validity. ")
         self._le = LabelEncoder()
 
 
