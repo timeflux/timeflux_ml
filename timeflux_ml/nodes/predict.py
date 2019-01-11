@@ -56,8 +56,8 @@ class Predict(Node):
         """
          Args:
             stack_method (string|int): Method to use for stacking ('vstack' to use `numpy.vstack <https://docs.scipy.org/doc/numpy-1.15.0/reference/generated/numpy.vstack.html>`_ ;  'hstack' to use `numpy.hstack <https://docs.scipy.org/doc/numpy-1.15.0/reference/generated/numpy.hstack.html>`_ ; int (`0`, `1`, or `2`) to use `numpy.stack <https://docs.scipy.org/doc/numpy-1.15.0/reference/generated/numpy.stack.html>`_ on the specified axis.
-            registry_key (str): The key on which to load the fitted models.
-            meta_key (str): The key to add in the output meta with the predicted label
+            registry_key (str): The key on which to load the fitted models. Default: `fit_pipeline`.
+            meta_key (str): The key to add in the output meta with the predicted label Default: `pred`.
 
         """
 

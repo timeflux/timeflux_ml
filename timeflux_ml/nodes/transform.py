@@ -105,9 +105,9 @@ class Transform(Node):
         """
          Args:
             stack_method (string|int): Method to use for stacking ('vstack' to use `numpy.vstack <https://docs.scipy.org/doc/numpy-1.15.0/reference/generated/numpy.vstack.html>`_ ;  'hstack' to use `numpy.hstack <https://docs.scipy.org/doc/numpy-1.15.0/reference/generated/numpy.hstack.html>`_ ; int (`0`, `1`, or `2`) to use `numpy.stack <https://docs.scipy.org/doc/numpy-1.15.0/reference/generated/numpy.stack.html>`_ on the specified axis.
-            registry_key (str): The key on which to load the fitted models.
-            set_columns (bool): Whether or not the columns names of the input data should be transfered to the output data (only if the number of columns remains unchanged).
-            set_index (bool): Whether or not the index of the input data should be transfered to the output data (only if the number of rows remains unchanged).
+            registry_key (str): The key on which to load the fitted models. Default: `fit_pipeline`.
+            set_columns (bool): Whether or not the columns names of the input data should be transfered to the output data (only if the number of columns remains unchanged). Default: `True`.
+            set_index (bool): Whether or not the index of the input data should be transfered to the output data (only if the number of rows remains unchanged). Default: `False`.
 
         """
 

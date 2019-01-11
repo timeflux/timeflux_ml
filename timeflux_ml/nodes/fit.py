@@ -63,10 +63,10 @@ class Fit(Node):
             **fit_params (dict): string -> object.  Parameters passed to the fit method of
                                                     each step, where each parameter name is prefixed
                                                     such that parameter `p` for step `s` has key `s__p`.
-            has_targets (bool, True): If True, model is supervised and meta should have a field "label"; if False, model is unsupervised and y is set to None.
-            receives_epochs (bool, True): if True, the node expects input data with strictly the same shapes.
-            registry_key (str): The key on which to save the fitted model.
-            context_key (str, None): The key on which the target is given. If None, the all "context" content is considered for label. Only if has_targets is True.
+            has_targets (bool, True): If True, model is supervised and meta should have a field "label"; if False, model is unsupervised and y is set to None. Default: `True` .
+            receives_epochs (bool, True): if True, the node expects input data with strictly the same shapes. Default: `True` .
+            registry_key (str): The key on which to save the fitted model. Default: `fit_pipeline`.
+            context_key (str, None): The key on which the target is given. If None, the all "context" content is considered for label. Only if has_targets is True. Default: `None`.
         """
 
         self._event_begins = event_begins
