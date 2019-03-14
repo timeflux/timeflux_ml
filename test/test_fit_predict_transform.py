@@ -1,6 +1,7 @@
 import pandas as pd
 import numpy as np
 import pytest
+# import helpers
 from . import helpers
 from timeflux.nodes.epoch import Epoch
 from timeflux.core.registry import Registry
@@ -8,7 +9,7 @@ from timeflux_ml.nodes.fit import Fit
 from timeflux_ml.nodes.transform import Transform
 from timeflux_ml.nodes.predict import Predict
 
-
+from time import sleep
 
 #------------------------------------------------------
 # Check-up testing : Test invalid syntax/inputs
@@ -111,7 +112,10 @@ def test_fit_model_1():
     node_fit1.i.data = data.next(30)
     event = pd.DataFrame([['accumulation_ends']], [time_ends], columns=['label'])  # Generate a trigger event
     node_fit1.i_events.data = event
-    node_fit1.update()
+    # node_fit1.update()
+    while ((node_fit1._thread) is None or (not node_fit1._thread.isAlive())) and (node_fit1._mode!="silent"):
+        node_fit1.update()
+        sleep(0.1)
 
     # assert model is saved in registry
     assert hasattr(Registry, "test_scaler") == True
@@ -211,7 +215,11 @@ def test_fit_model_2():
     time_ends = data.next(1).index  # DatetimeIndex(['2018-01-01 00:00:11'], dtype='datetime64[ns])
     event = pd.DataFrame(['accumulation_ends'], [time_ends], columns=['label'])
     node_fit2.i_events.data = event
-    node_fit2.update()
+
+    while ((node_fit2._thread) is None or (not node_fit2._thread.isAlive())) and (node_fit2._mode!="silent"):
+
+        node_fit2.update()
+        sleep(0.1)
 
     # check the model has been saved in the Registry
     assert hasattr(Registry, "pipe_xdawn") == True
@@ -321,7 +329,9 @@ def test_fit_3():
     node_fit3.i.meta = None
     event = pd.DataFrame([['accumulation_ends']], [0], columns=['label'])  # Generate a trigger event
     node_fit3.i_events.data = event
-    node_fit3.update()
+    while ((node_fit3._thread) is None or (not node_fit3._thread.isAlive())) and (node_fit3._mode!="silent"):
+        node_fit3.update()
+        sleep(0.1)
 
     # # assert model is saved in registry
     assert hasattr(Registry, "test_forest") == True
