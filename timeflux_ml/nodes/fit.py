@@ -2,11 +2,14 @@
 
 import logging
 import numpy as np
+import pandas as pd
 import json
+from time import time
 
 from itertools import cycle
 from functools import partial
 from importlib import import_module
+from collections import Counter
 
 from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import LabelEncoder
@@ -52,12 +55,14 @@ class Fit(Node):
 
     """
 
-    def __init__(self, event_begins, event_ends, event_label, stack_method, steps_config, fit_params=None,  has_targets=True, receives_epochs=True, registry_key="fit_pipeline", context_key=None):
+    def __init__(self, event_begins, event_ends, event_label, stack_method, steps_config, event_outputs_prefix="timeflux_fit", fit_params=None,  has_targets=True, receives_epochs=True, registry_key="fit_pipeline", context_key=None):
         """
         Args:
             event_begins (string): The marker name on which the node starts accumulating data.
             event_ends (string): The marker name on which the node stops accumulating data and fits the model.
             event_label (string): The column to match for event_trigger.
+            event_outputs_prefix (string): The label prefixe of the output events stream.
+
             stack_method (string|int): Method to use for stacking ('vstack' to use `numpy.vstack <https://docs.scipy.org/doc/numpy-1.15.0/reference/generated/numpy.vstack.html>`_ ;  'hstack' to use `numpy.hstack <https://docs.scipy.org/doc/numpy-1.15.0/reference/generated/numpy.hstack.html>`_ ; int (`0`, `1`, or `2`) to use `numpy.stack <https://docs.scipy.org/doc/numpy-1.15.0/reference/generated/numpy.stack.html>`_ on the specified axis.
             steps_config (list):  (name, module_name, method_name) Tuples to specify steps of the pipeline to fit.
             **fit_params (dict): string -> object.  Parameters passed to the fit method of
@@ -72,6 +77,9 @@ class Fit(Node):
         self._event_begins = event_begins
         self._event_ends = event_ends
         self._event_label = event_label
+
+        self._event_outputs_prefix = event_outputs_prefix
+
         if type(steps_config)==tuple: steps_config=[steps_config]
         self._steps_config = steps_config
         if fit_params is None: fit_params = {}
@@ -120,7 +128,6 @@ class Fit(Node):
         self._mode = next(self._mode_iterator)
 
     def update(self):
-        print(self._mode)
 
         # Detect onset to eventually update  mode
         if self.i_events.data is not None:
@@ -160,6 +167,7 @@ class Fit(Node):
 
         if self._mode == "fit":
 
+
             self._fit()
 
             # Save in registry
@@ -186,6 +194,15 @@ class Fit(Node):
         else:
             _y = None
 
+        logging.debug("Wait for it, the model is fitting... ")
+        _meta = {"X_shape": _X.shape}
+        if _y is not None:
+            _meta["y_count"] = Counter(set(_y))
+        self.o_events.data = pd.DataFrame(index=[pd.Timestamp(time(), unit='s')],
+                                          columns=["label", "data"],
+                                          data=[[self._event_outputs_prefix + "_fitting-model_begins",
+                                                 _meta]])
+
         # Fit X model
         self._pipeline.fit(_X, _y)
 
@@ -195,7 +212,7 @@ class Fit(Node):
         if self.i.data is not None:
             if not self.i.data.empty:
 
-                if self._receives_epochs :
+                if self._receives_epochs:
                     if self._shape is None:
                         self._shape = self.i.data.shape
 
