@@ -4,6 +4,7 @@ import logging
 import numpy as np
 import pandas as pd
 import json
+from threading import Thread
 from time import time
 
 from itertools import cycle
@@ -99,6 +100,8 @@ class Fit(Node):
 
         self._reset()
 
+        self._thread = None
+
 
     def _init_model(self):
         if not([len(steps) for steps in self._steps_config] == [3]*len(self._steps_config)):
@@ -166,21 +169,22 @@ class Fit(Node):
                         self._buffer_label.append(self.i.meta["epoch"]["context"])
 
         if self._mode == "fit":
+            if self._thread is None:
+                self._fit()
 
+            elif not self._thread.isAlive():
 
-            self._fit()
+                # Save in registry
+                if self._has_targets:
+                    model = {"values": self._pipeline, "label": self._le}
+                else:
+                    model = {"values": self._pipeline}
 
-            # Save in registry
-            if self._has_targets:
-                model = {"values": self._pipeline, "label": self._le}
-            else:
-                model = {"values": self._pipeline}
+                setattr(Registry, self._registry_key, model)
+                logging.info("Pipeline {registry_key} has been successfully saved in the registry".format(registry_key=self._registry_key))
 
-            setattr(Registry, self._registry_key, model)
-            logging.info("Pipeline {registry_key} has been successfully saved in the registry".format(registry_key=self._registry_key))
-
-            # Reset states
-            self._reset()
+                # Reset states
+                self._reset()
 
     def _fit(self):
 
@@ -200,11 +204,18 @@ class Fit(Node):
             _meta["y_count"] = Counter(set(_y))
         self.o_events.data = pd.DataFrame(index=[pd.Timestamp(time(), unit='s')],
                                           columns=["label", "data"],
-                                          data=[[self._event_outputs_prefix + "_fitting-model_begins",
-                                                 _meta]])
+                                          data=[[self._event_outputs_prefix + "_fitting-model_begins", _meta]])
 
-        # Fit X model
-        self._pipeline.fit(_X, _y)
+        # Fit X model in a thread
+        self._thread = Thread(target=self._fit_pipeline, args=(_X, _y))
+        # self._thread.join()
+
+        self._thread.start()
+
+        # self._pipeline.fit(_X, _y)
+
+    def _fit_pipeline(self, X, y):
+        self._pipeline.fit(X, y)
 
     def _valid_input(self):
 
