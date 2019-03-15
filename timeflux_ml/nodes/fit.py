@@ -172,7 +172,7 @@ class Fit(Node):
             if self._thread is None:
                 self._fit()
 
-            elif not self._thread.isAlive():
+            elif not self._thread.is_alive():
 
                 # Save in registry
                 if self._has_targets:
