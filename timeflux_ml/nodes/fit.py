@@ -125,7 +125,6 @@ class Fit(Node):
             raise ValueError  ("Could not set params of pipeline. Check the validity. ")
         self._le = LabelEncoder()
 
-
     def _next(self):
         self._trigger = next(self._trigger_iterator)
         self._mode = next(self._mode_iterator)
@@ -139,34 +138,44 @@ class Fit(Node):
                     self._event_label] == self._trigger]
                 if not matches.empty:
                     self._next()
-                    if self.i.data is not None:
-                        if not self.i.data.empty:
-                            # troncate data to onset if not receiving epochs
-                            if not self._receives_epochs:
-                                if self._mode == "accumulate":
-                                    self.i.data = self.i.data[matches.index[0]:]
-                                elif self._mode == "fit":
-                                    self.i.data = self.i.data[:matches.index[0]]
-                                # TODO: handle case where begins & ends triggers are received at the same time
+                    if self.i.data is not None and not self.i.data.empty:
+                        # troncate data to onset if not receiving epochs
+                        if not self._receives_epochs:
+                            if self._mode == "accumulate":
+                                self.i.data = self.i.data[matches.index[0]:]
+                            elif self._mode == "fit":
+                                self.i.data = self.i.data[:matches.index[0]]
+                            # TODO: handle case where begins & ends triggers are received at the same time
 
         # check mode
         if self._mode == "silent":
             # Do nothing
             pass
 
-        elif self._mode in ["accumulate", "fit"] :
+        elif self._mode in ["accumulate", "fit"]:
             # Append data
-            if self._valid_input():
-                # Append data
-                self._buffer_values.append(self.i.data.values)
+            ports = list(self.iterate("i*"))
 
-                # Append label
-                if self._has_targets:
-                    if self._context_key is not None:
-                        if type(self.i.meta["epoch"]["context"]) == str : self.i.meta["epoch"]["context"] = json.loads(self.i.meta["epoch"]["context"])
-                        self._buffer_label.append(self.i.meta["epoch"]["context"][self._context_key])
-                    else:
-                        self._buffer_label.append(self.i.meta["epoch"]["context"])
+            for (name, _, port) in ports:
+                # if self._valid_input():
+                if ("events" not in name) and self._valid_input(port):
+
+                    # Append data
+                    # self._buffer_index.append(port.data.index[0])
+                    self._buffer_values.append(port.data.values)
+
+                    # Append label
+                    if self._has_targets:
+                        if self._context_key is not None:
+                            context = port.meta["epoch"]["context"]
+                            if type(port.meta["epoch"]["context"]) == str:
+                                context = json.loads(context)
+                            self._buffer_label.append(context[self._context_key])
+
+                            # if type(self.i.meta["epoch"]["context"]) == str : self.i.meta["epoch"]["context"] = json.loads(self.i.meta["epoch"]["context"])
+                            # self._buffer_label.append(self.i.meta["epoch"]["context"][self._context_key])
+                        else:
+                            self._buffer_label.append(self.i.meta["epoch"]["context"])
 
         if self._mode == "fit":
             if self._thread is None:
@@ -223,44 +232,46 @@ class Fit(Node):
     def _fit_pipeline(self, X, y):
         self._pipeline.fit(X, y)
 
-    def _valid_input(self):
+    def _valid_input(self, port):
 
         # Check input data and meta
-        if self.i.data is not None:
-            if not self.i.data.empty:
+        if port.data is not None and not port.data.empty:
 
-                if self._receives_epochs:
-                    if self._shape is None:
-                        self._shape = self.i.data.shape
+            if self._receives_epochs:
+                if self._shape is None:
+                    self._shape = port.data.shape
 
-                    # Check data shape
-                    if self.i.data.shape != self._shape:
-                        logging.warnings("FitPipeline received an epoch with invalid shape. Expecting {expected_shape}, "
-                                         "received {actual_shape}.".format(expected_shape=self._shape, actual_shape=self.i.data.shape))
+                # Check data shape
+                if port.data.shape != self._shape:
+                    logging.warnings("FitPipeline received an epoch with invalid shape. Expecting {expected_shape}, "
+                                     "received {actual_shape}.".format(expected_shape=self._shape, actual_shape=self.i.data.shape))
+                    return False
+            if self._has_targets:
+            # Check valid meta is present
+                if (port.meta is None) or ("epoch" not in port.meta) or ("context" not in port.meta['epoch']):
+                    logging.warnings("FitPipeline received an epoch with no valid meta")
+                    return False
+                elif self._context_key is not None :
+                    if self._context_key not in port.meta["epoch"]["context"]:
+                        logging.warnings("FitPipeline received an epoch with no valid meta: {context_key} not in meta['epoch']['context]".format(context_key=self._context_key))
                         return False
-                if self._has_targets:
-                # Check valid meta is present
-                    if (self.i.meta is None) | (self.i.meta is not None) & ("epoch" not in self.i.meta) |((self.i.meta is not None) & ("epoch" not in self.i.meta) & ("context" not in self.i.meta['epoch'])):
-                        logging.warnings("FitPipeline received an epoch with no valid meta")
-                        return False
-                    elif self._context_key is not None :
-                        if self._context_key not in self.i.meta["epoch"]["context"]:
-                            logging.warnings("FitPipeline received an epoch with no valid meta: {context_key} not in meta['epoch']['context]".format(context_key=self._context_key))
-                            return False
 
-                if self._stackable is None:
-                    # check if the features are stackable
-                    try:
-                        _ = self._stack([self.i.data.values, self.i.data.values])
-                    except np.core._internal.AxisError:
-                        raise ("Could not concatenate data. ")
-                    self._stackable = True
-                return True
+            if self._stackable is None:
+                # check if the features are stackable
+                try:
+                    _ = self._stack([port.data.values, port.data.values])
+                except np.core._internal.AxisError:
+                    raise ("Could not concatenate data. ")
+                self._stackable = True
+            return True
 
     def _reset(self):
 
         # Reset buffers
         self._buffer_values = []
+        # self._buffer_index = [] #Todo delete that
+
+
         if self._has_targets: self._buffer_label = []
         self._shape = None
 
