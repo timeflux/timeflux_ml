@@ -113,7 +113,7 @@ def test_fit_model_1():
     event = pd.DataFrame([['accumulation_ends']], [time_ends], columns=['label'])  # Generate a trigger event
     node_fit1.i_events.data = event
     # node_fit1.update()
-    while ((node_fit1._thread) is None or (not node_fit1._thread.isAlive())) and (node_fit1._mode!="silent"):
+    while ((node_fit1._thread) is None or (not node_fit1._thread.is_alive())) and (node_fit1._mode!="silent"):
         node_fit1.update()
         sleep(0.1)
 
@@ -216,7 +216,7 @@ def test_fit_model_2():
     event = pd.DataFrame(['accumulation_ends'], [time_ends], columns=['label'])
     node_fit2.i_events.data = event
 
-    while ((node_fit2._thread) is None or (not node_fit2._thread.isAlive())) and (node_fit2._mode!="silent"):
+    while ((node_fit2._thread) is None or (not node_fit2._thread.is_alive())) and (node_fit2._mode!="silent"):
 
         node_fit2.update()
         sleep(0.1)
@@ -329,7 +329,7 @@ def test_fit_3():
     node_fit3.i.meta = None
     event = pd.DataFrame([['accumulation_ends']], [0], columns=['label'])  # Generate a trigger event
     node_fit3.i_events.data = event
-    while ((node_fit3._thread) is None or (not node_fit3._thread.isAlive())) and (node_fit3._mode!="silent"):
+    while ((node_fit3._thread) is None or (not node_fit3._thread.is_alive())) and (node_fit3._mode!="silent"):
         node_fit3.update()
         sleep(0.1)
 
