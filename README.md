@@ -11,7 +11,7 @@ You can then install this plugin in the ``timeflux`` environment:
 
 ```
 $ source activate timeflux
-$ pip install git+https://github.com/timeflux/timeflux_dsp
+$ pip install git+https://github.com/timeflux/timeflux_ml
 ```
 
 ## Modules
