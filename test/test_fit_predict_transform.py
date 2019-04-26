@@ -113,7 +113,7 @@ def test_fit_model_1():
     event = pd.DataFrame([['accumulation_ends']], [time_ends], columns=['label'])  # Generate a trigger event
     node_fit1.i_events.data = event
     # node_fit1.update()
-    while ((node_fit1._thread) is None or (not node_fit1._thread.is_alive())) and (node_fit1._mode!="silent"):
+    while ((node_fit1._thread) is None or (not node_fit1._thread.isAlive())) and (node_fit1._mode!="silent"):
         node_fit1.update()
         sleep(0.1)
 
@@ -279,9 +279,7 @@ def test_transform_2():
 #
 
 from sklearn import datasets
-from sklearn import svm
 from sklearn.feature_selection import SelectKBest
-from sklearn.feature_selection import chi2
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.pipeline import Pipeline
 
@@ -291,7 +289,7 @@ iris = datasets.load_iris()
 
 pipeline = Pipeline([
       ('feature_selection', SelectKBest(k=2)),
-      ('classification', RandomForestClassifier())
+      ('classification', RandomForestClassifier(n_estimators=10))
     ])
 
 pipeline.fit(iris.data, iris.target)
@@ -299,7 +297,7 @@ prediction1 = pipeline.predict(iris.data)
 
 pipeline2 = Pipeline([
       ('feature_selection', SelectKBest(k=2)),
-      ('classification', RandomForestClassifier())
+      ('classification', RandomForestClassifier(n_estimators=10))
     ])
 
 pipeline2.fit(iris.data, iris.target)
@@ -308,7 +306,7 @@ node_fit3 = Fit(event_begins="accumulation_begins", event_ends="accumulation_end
                 stack_method="vstack",
                 steps_config=[("feature_selection", "SelectKBest", "sklearn.feature_selection"),
                               ("classification", "RandomForestClassifier", "sklearn.ensemble")],
-                fit_params={"feature_selection__k": 2},
+                fit_params={"feature_selection__k": 2, "classification__n_estimators": 10},
                 has_targets=True,
                 receives_epochs=True,
                 registry_key="test_forest",
