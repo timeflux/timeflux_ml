@@ -10,7 +10,7 @@ First, make sure that [Timeflux is installed](https://github.com/timeflux/timefl
 You can then install this plugin in the ``timeflux`` environment:
 
 ```
-$ source activate timeflux
+$ conda activate timeflux
 $ pip install git+https://github.com/timeflux/timeflux_ml
 ```
 
@@ -20,8 +20,8 @@ $ pip install git+https://github.com/timeflux/timeflux_ml
 This module contains nodes to create and fit pipeline of transforms with eventually a final estimator.
 
 ### transform
-This module contains nodes to transform data thanks to a previously fitted pipeline. 
+This module contains nodes to transform data thanks to a previously fitted pipeline.
 
 ### predict
-This module contains nodes to predict the label of data thanks to a previously fitted pipeline. 
+This module contains nodes to predict the label of data thanks to a previously fitted pipeline.
 
