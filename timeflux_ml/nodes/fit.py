@@ -1,6 +1,3 @@
-
-
-import logging
 import numpy as np
 import json
 
@@ -169,7 +166,7 @@ class Fit(Node):
                 model = {"values": self._pipeline}
 
             setattr(Registry, self._registry_key, model)
-            logging.info("Pipeline {registry_key} has been successfully saved in the registry".format(registry_key=self._registry_key))
+            self.logger.info("Pipeline {registry_key} has been successfully saved in the registry".format(registry_key=self._registry_key))
 
             # Reset states
             self._reset()
@@ -201,17 +198,17 @@ class Fit(Node):
 
                     # Check data shape
                     if self.i.data.shape != self._shape:
-                        logging.warnings("FitPipeline received an epoch with invalid shape. Expecting {expected_shape}, "
+                        self.logger.warning("FitPipeline received an epoch with invalid shape. Expecting {expected_shape}, "
                                          "received {actual_shape}.".format(expected_shape=self._shape, actual_shape=self.i.data.shape))
                         return False
                 if self._has_targets:
                 # Check valid meta is present
                     if (self.i.meta is None) | (self.i.meta is not None) & ("epoch" not in self.i.meta) |((self.i.meta is not None) & ("epoch" not in self.i.meta) & ("context" not in self.i.meta['epoch'])):
-                        logging.warnings("FitPipeline received an epoch with no valid meta")
+                        self.logger.warning("FitPipeline received an epoch with no valid meta")
                         return False
                     elif self._context_key is not None :
                         if self._context_key not in self.i.meta["epoch"]["context"]:
-                            logging.warnings("FitPipeline received an epoch with no valid meta: {context_key} not in meta['epoch']['context]".format(context_key=self._context_key))
+                            self.logger.warning("FitPipeline received an epoch with no valid meta: {context_key} not in meta['epoch']['context]".format(context_key=self._context_key))
                             return False
 
                 if self._stackable is None:
@@ -219,7 +216,7 @@ class Fit(Node):
                     try:
                         _ = self._stack([self.i.data.values, self.i.data.values])
                     except np.core._internal.AxisError:
-                        raise ("Could not concatenate data. ")
+                        raise ("Could not concatenate data.")
                     self._stackable = True
                 return True
 
