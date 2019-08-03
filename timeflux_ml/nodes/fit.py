@@ -43,7 +43,7 @@ class Fit(Node):
 
     - **continuous data**: if the node is applied on streaming data, then ``receives_epochs`` should be `False`
     (eg. scaling, pca, ... ).
-    - **epochs**: if the node expects input data with strictky the same shape, then ``receives_epochs`` should be `True`
+    - **epochs**: if the node expects input data with strictly the same shape, then ``receives_epochs`` should be `True`
     (eg. XDawn, Covariances, ...).
 
     Attributes:
@@ -101,7 +101,8 @@ class Fit(Node):
 
         self._event_label_tx_base = event_label_tx_base
 
-        if type(steps_config) == tuple: steps_config = [steps_config]
+        if type(steps_config) == tuple:
+            steps_config = [steps_config]
         self._steps_config = steps_config
         if fit_params is None: fit_params = {}
         self._fit_params = fit_params
@@ -142,7 +143,10 @@ class Fit(Node):
                                                                                               transform_name=
                                                                                               transform_name))
             self._steps.append((name, transform))
-        self._pipeline = Pipeline(steps=self._steps, memory=self._memory)
+        # self._pipeline = Pipeline(steps=self._steps, memory=self._memory)
+
+        self._pipeline = Pipeline(steps=self._steps)
+
         try:
             self._pipeline.set_params(**self._fit_params)
         except ValueError:
@@ -250,12 +254,7 @@ class Fit(Node):
         else:
             self._y = None
 
-        # debug
-        now = str(time())
-        np.save("/Users/raph/Desktop/debug_fit/" + now + "_X", self._X)
-        np.save("/Users/raph/Desktop/debug_fit/" + now + "_y", self._y)
-
-        # save in the meta also
+        # save the models in the meta
         self.o_meta.meta = {"X": self._X, "y": self._y}
 
         self.logger.info("Wait for it, the model is fitting... ")
@@ -321,9 +320,9 @@ class Fit(Node):
 
         # Reset buffers
         self._buffer_values = []
-        # self._buffer_index = [] #Todo delete that
 
-        if self._has_targets: self._buffer_label = []
+        if self._has_targets:
+            self._buffer_label = []
         self._shape = None
 
         # Reset models
