@@ -137,7 +137,7 @@ class Transform(Node):
                 if not self.i.data.empty:
 
                     _X = self._stack([self.i.data.values])
-                    self.o.data = pd.DataFrame(data = np.squeeze(self._model["values"].transform(_X)))
+                    self.o.data = pd.DataFrame(data=np.squeeze(self._model["values"].transform(_X)))
                     # TODO: Handle cases were transformations lead to a NDArray (N>2), using XArray.
                     if self._set_index:
                         self.o.data.index = self.i.data.index
