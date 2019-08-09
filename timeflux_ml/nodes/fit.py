@@ -3,20 +3,16 @@ import pandas as pd
 import json
 from threading import Thread
 from time import time, clock
-import logging
 
-from itertools import cycle
-from functools import partial
-from importlib import import_module
 from collections import Counter
 
-from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import LabelEncoder
-
+import xarray as xr
 from timeflux.core.node import Node
-from timeflux.core.registry import Registry
 
 from copy import deepcopy
+
+from timeflux_ml.utils.sklearn_helpers import construct_pipeline
 
 
 class Fit(Node):
@@ -65,24 +61,15 @@ class Fit(Node):
 
     """
 
-    def __init__(self, event_begins, event_ends, event_label, stack_method, steps_config,
-                 event_label_tx_base="timeflux_fit", fit_params=None, has_targets=True, receives_epochs=True,
-                 registry_key="fit_pipeline", context_key=None, allow_recalibration=False):
+    def __init__(self, pipeline_steps, pipeline_params,
+                 event_label_base="timeflux_fit", has_targets=True):
         """
         Args:
-            event_begins (string): The marker name on which the node starts accumulating data.
-            event_ends (string): The marker name on which the node stops accumulating data and fits the model.
-            event_label (string): The column to match for event_trigger.
-            event_label_tx_base (string): The label prefixe of the output events stream.
 
-            stack_method (string|int): Method to use for stacking ('vstack' to use `numpy.vstack
-            <https://docs.scipy.org/doc/numpy-1.15.0/reference/generated/numpy.vstack.html>`_ ;
-            'hstack' to use `numpy.hstack
-            <https://docs.scipy.org/doc/numpy-1.15.0/reference/generated/numpy.hstack.html>`_ ; int (`0`, `1`, or `2`)
-            to use `numpy.stack <https://docs.scipy.org/doc/numpy-1.15.0/reference/generated/numpy.stack.html>`_ on the
-            specified axis.
-            steps_config (list):  (name, module_name, method_name) Tuples to specify steps of the pipeline to fit.
-            **fit_params (dict): string -> object.  Parameters passed to the fit method of
+            event_label_tx_base (string|None): The label prefixe of the output events stream.
+
+            pipeline_steps (dict):  (name, module_name, method_name) Tuples to specify steps of the pipeline to fit.
+            pipeline_params (dict): string -> object.  Parameters passed to the fit method of
                                                     each step, where each parameter name is prefixed
                                                     such that parameter `p` for step `s` has key `s__p`.
             has_targets (bool, True): If True, model is supervised and meta should have a field "label"; if False,
@@ -95,242 +82,84 @@ class Fit(Node):
             allow_recalibration (bool):
         """
 
-        self._event_begins = event_begins
-        self._event_ends = event_ends
-        self._event_label = event_label
+        self._pipeline_steps = pipeline_steps
+        self._pipeline_params = pipeline_params or {}
+        self._event_label_base = event_label_base
 
-        self._event_label_tx_base = event_label_tx_base
-
-        if type(steps_config) == tuple:
-            steps_config = [steps_config]
-        self._steps_config = steps_config
-        if fit_params is None: fit_params = {}
-        self._fit_params = fit_params
-        self._registry_key = registry_key
         self._has_targets = has_targets
-        self._receives_epochs = receives_epochs
-        self._context_key = context_key
-
-        if stack_method == "vstack":
-            self._stack = np.vstack
-        elif stack_method == "hstack":
-            self._stack = np.hstack
-        elif type(stack_method) == int:
-            self._stack = partial(np.stack, axis=stack_method)
-        self._stackable = None
-        self._allow_recalibration = allow_recalibration
-
         self._reset()
-
         self._thread = None
-        self._return = False
-        # self.logger.level == logging.DEBUG
-
-    def _init_model(self):
-        if not ([len(steps) for steps in self._steps_config] == [3] * len(self._steps_config)):
-            raise ValueError("Parameter steps should be a list of (name, module_name, transform_name) tuples")
-
-        self._steps = []
-        for (name, transform_name, module_name) in self._steps_config:
-            try:
-                m = import_module(module_name)
-            except ImportError:
-                raise ImportError("Could not import module {module_name}".format(module_name=module_name))
-            try:
-                transform = getattr(m, transform_name)()
-            except AttributeError:
-                raise ValueError("Module {module_name} has no object {transform_name}".format(module_name=module_name,
-                                                                                              transform_name=
-                                                                                              transform_name))
-            self._steps.append((name, transform))
-        # self._pipeline = Pipeline(steps=self._steps, memory=self._memory)
-
-        self._pipeline = Pipeline(steps=self._steps)
-
-        try:
-            self._pipeline.set_params(**self._fit_params)
-        except ValueError:
-            raise ValueError("Could not set params of pipeline. Check the validity. ")
-        self._le = LabelEncoder()
-
-    def _next(self):
-        self._trigger = next(self._trigger_iterator)
-        self._mode = next(self._mode_iterator)
-
-    def update(self):
-
-        if self._return:
-            return
-
-        # Detect onset to eventually update  mode
-        if self.i_events.data is not None:
-            if not self.i_events.data.empty:
-                matches = self.i_events.data[self.i_events.data[
-                                                 self._event_label] == self._trigger]
-                if not matches.empty:
-                    self._next()
-                    if self.i.data is not None and not self.i.data.empty:
-                        # troncate data to onset if not receiving epochs
-                        if not self._receives_epochs:
-                            if self._mode == "accumulate":
-                                self.i.data = self.i.data[matches.index[0]:]
-                            elif self._mode == "fit":
-                                self.i.data = self.i.data[:matches.index[0]]
-                            # TODO: handle case where begins & ends triggers are received at the same time
-
-        # check mode
-        if self._mode == "silent":
-            # Do nothing
-            pass
-
-        elif self._mode in ["accumulate", "fit"]:
-            # Append data
-            ports = list(self.iterate("i*"))
-
-            for (name, _, port) in ports:
-                # if self._valid_input():
-                if ("events" not in name) and self._valid_input(port):
-
-                    # Append data
-                    # self._buffer_index.append(port.data.index[0])
-                    self._buffer_values.append(port.data.values)
-
-                    # Append label
-                    if self._has_targets:
-                        if self._context_key is not None:
-                            context = port.meta["epoch"]["context"]
-                            if type(port.meta["epoch"]["context"]) == str:
-                                context = json.loads(context)
-                            self._buffer_label.append(context[self._context_key])
-
-                        else:
-                            self._buffer_label.append(self.i.meta["epoch"]["context"])
-
-        if self._mode == "fit":
-            if self._thread is None:
-                self._fit()
-
-            elif not self._thread.is_alive():
-
-                # Save in registry
-                if self._has_targets:
-                    model = {"values": self._pipeline, "label": self._le}
-                else:
-                    model = {"values": self._pipeline}
-
-                setattr(Registry, self._registry_key, deepcopy(model))
-
-                self.o_meta.meta = {"clf": deepcopy(self._pipeline)}
-
-                self.logger.info("Pipeline {registry_key} has been successfully saved in the registry".format(
-                    registry_key=self._registry_key))
-
-                # send an event to announce that fitting is ready.
-
-                self.o.data = pd.DataFrame(index=[pd.Timestamp(time(), unit='s')],
-                                           columns=["label", "data"],
-
-                                           data=[[self._event_label_tx_base + "_fitting-model_ends", None]])
-
-                self.logger.debug("Fit time: " + str(self._fit_duration))
-
-                # If recalibrate is not allowed, set kill_node = True
-                if self._allow_recalibration == False:
-                    self._return = True
-
-                else:
-                    # Reset states
-                    self._reset()
-
-    def _fit(self):
-
-        # stack buffer
-        self._X = self._stack(self._buffer_values)
-
-        if self._has_targets:
-            self._y = np.array(self._buffer_label)
-            # Fit y model and save into the registery
-            self._y = self._le.fit_transform(self._y)
-        else:
-            self._y = None
-
-        # save the models in the meta
-        self.o_meta.meta = {"X": self._X, "y": self._y}
-
-        self.logger.info("Wait for it, the model is fitting... ")
-        _meta = {"X_shape": self._X.shape}
-        if self._y is not None:
-            y_count = dict(Counter(self._y))
-            _meta["y_count"] = {self._le.inverse_transform([k])[0]: v for (k, v) in
-                                y_count.items()}  # convert keys to string and dump
-
-        self.o.data = pd.DataFrame(index=[pd.Timestamp(time(), unit='s')],
-                                   columns=["label", "data"],
-                                   data=[[self._event_label_tx_base + "_fitting-model_begins", json.dumps(_meta)]])
-
-        # Fit X model in a thread
-        self._thread = Thread(target=self._fit_pipeline, args=(self._X, self._y))
-        self._thread.start()
-
-    def _fit_pipeline(self, X, y):
-        tic = clock()
-        self._pipeline.fit(X, y)
-        self._fit_duration = clock() - tic
-
-    def _valid_input(self, port):
-
-        # Check input data and meta
-        if port.data is not None and not port.data.empty:
-
-            if self._receives_epochs:
-                if self._shape is None:
-                    port.data.index = port.data.index - port.data.index[0]
-                    port.data.to_csv('/Users/raph/Desktop/good_one.csv')
-                    self._shape = port.data.shape
-
-                # Check data shape
-                if port.data.shape != self._shape:
-                    port.data.index = port.data.index - port.data.index[0]
-
-                    self.logger.warning("FitPipeline received an epoch with invalid shape.")
-                    return False
-            if self._has_targets:
-                # Check valid meta is present
-                if (port.meta is None) or ("epoch" not in port.meta) or ("context" not in port.meta['epoch']):
-                    self.logger.warnings("FitPipeline received an epoch with no valid meta")
-                    return False
-                elif self._context_key is not None:
-                    if self._context_key not in port.meta["epoch"]["context"]:
-                        self.logger.warnings(
-                            "FitPipeline received an epoch with no valid meta: {context_key} "
-                            "not in meta['epoch']['context]".format(
-                                context_key=self._context_key))
-                        return False
-
-            if self._stackable is None:
-                # check if the features are stackable
-                try:
-                    _ = self._stack([port.data.values, port.data.values])
-                except np.core._internal.AxisError:
-                    raise ("Could not concatenate data. ")
-                self._stackable = True
-            return True
 
     def _reset(self):
-
-        # Reset buffers
-        self._buffer_values = []
-
-        if self._has_targets:
-            self._buffer_label = []
-        self._shape = None
-
-        # Reset models
         self._le = LabelEncoder()
-        self._init_model()
+        self._pipeline = construct_pipeline(self._pipeline_steps, self._pipeline_params)
 
-        # Reset iterator states
-        self._trigger_iterator = cycle([self._event_begins, self._event_ends])
-        self._mode_iterator = cycle(["silent", "accumulate", "fit"])
-        self._trigger = next(self._trigger_iterator)
-        self._mode = next(self._mode_iterator)
+    def update(self):
+        super().update()
+
+        # At this point, we are sure that we have some data to process
+        self.o.data = pd.DataFrame()
+
+        if self._thread is None:
+            # When we have not received data, there is nothing to do
+            if self.i.data is None or len(self.i.data == 0):
+                return
+            self._fit()
+
+        if not self._thread.is_alive():
+            # Save in registry
+            if self._has_targets:
+                model = {"values": deepcopy(self._pipeline), "label": deepcopy(self._le)}
+            else:
+                model = {"values": deepcopy(self._pipeline)}
+
+            self.o.meta.update({'pipeline': model})
+
+            self.logger.info(f'Pipeline {self._pipeline} was successfully fitted')
+
+            # send an event to announce that fitting is ready.
+            if self._event_label_base is not None:
+                self.o.data = self.o.data.append(pd.DataFrame(index=[pd.Timestamp(time(), unit='s')],
+                                                              columns=['label', 'data'],
+                                                              data=[[self._event_label_base + '_ends',
+                                                                     json.dumps(
+                                                                         {'fit_duration': self._fit_duration})]]))
+
+            self.logger.debug('Fit time: %.2f' % self._fit_duration)
+            self._reset()
+
+    def _fit(self):
+        self._y = None
+        _meta = {}
+        if isinstance(self.i.data, xr.Dataset):
+            self._X = self.i.data.data.values
+            if self._has_targets:
+                self._y = self.i.data.target.values
+                self._y = self._le.fit_transform(self._y)
+                y_count = dict(Counter(self._y))
+                _meta['y_count'] = {self._le.inverse_transform([k])[0]: v for (k, v) in
+                                    y_count.items()}  # convert keys to string and dump
+        else:  # DataFrame or DataArray
+            self._X = self.i.data.values
+
+        _meta['X_shape'] = self._X.shape
+
+        # save the models in the meta
+        self.o.meta.update({'X': self._X, 'y': self._y})
+
+        self.logger.info('Wait for it, the model is fitting... ')
+
+        if self._event_label_base is not None:
+            self.o.data = self.o.data.append(
+                self.o.data.append(pd.DataFrame(index=[pd.Timestamp(time(), unit='s')],
+                                                columns=['label', 'data'],
+                                                data=[[self._event_label_base + '_begins', json.dumps(_meta)]])))
+
+        # Fit X model in a thread
+        self._thread = Thread(target=self._fit_pipeline)
+        self._thread.start()
+
+    def _fit_pipeline(self):
+        tic = clock()
+        self._pipeline.fit(self._X, self._y)
+        self._fit_duration = clock() - tic
