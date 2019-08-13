@@ -12,6 +12,7 @@ class Transform(Node):
     input data values and return the transformed data.
 
     Attributes:
+        i_model (Port): model input, expects meta.
         i (Port): default input, expects DataFrame or DataArray and meta.
         o (Port): default output, provides DataFrame or DataArray and meta.
 
