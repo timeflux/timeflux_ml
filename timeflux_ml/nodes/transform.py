@@ -1,24 +1,30 @@
-import numpy as np
 import pandas as pd
-
-from functools import partial
-
-from timeflux.core.node import Node
-from timeflux.core.registry import Registry
 import xarray as xr
+from timeflux.core.node import Node
 
 
 class Transform(Node):
     """ Apply pipeline transformations to the data.
 
-    This node loads a scikit pipeline previously saved in the Registry.
-    When it receives data, it reshape it using the specified ``stack_method`` and calls the transform method.
-    It returns the transformed data.
+    This node expects a scikit pipeline from input port 'model'. Once the model is
+    received, the node is ready.
+    Once the node ready, the node calls the transform method of the model on the.
+    input data values and return the transformed data.
 
     Attributes:
-        i (Port): default input, expects DataFrame and meta.
-        o (Port): default output, provides DataFrame.
+        i (Port): default input, expects DataFrame or DataArray and meta.
+        o (Port): default output, provides DataFrame or DataArray and meta.
 
+    Args:
+        coords (dict|None): Dictionary-like container of coordinate arrays in case the data
+                    is of type DataArray.
+        set_columns ('all'|list|None): List of columns to be assigned to the output data in case the
+                    data is of type DataFrame. If 'all', columns remain unchanged.
+                    (only if the number of columns remains unchanged).
+        set_index ('all'|'last'|None): Method to use to set the index to the output data in case the
+                    data is of type DataFrame. If 'all', index remain unchanged. If 'last', the
+                    transformed data should have only one row and the index is set to the last timestamp
+                    of the input data.
 
     Example:
 
@@ -27,68 +33,22 @@ class Transform(Node):
 
         We choose the transformation `MinMaxScaler` from `sklearn.preprocessing`.
 
-        In this case, there is no need for buffering before (``receives_epoch`` = `False`), no need for target labelling (``has_targets`` =`False`)
-        and the data should be concatenated vertically (``stack_method`` = `v_stack`).
-
-
-        The corresponding graph is:
-
-        .. literalinclude:: /../../timeflux_ml/test/graphs/fit_transform1.yaml
-           :language: yaml
-
-
-        The process is:
-
-        - **silent**:
-
-            - Fit node does nothing but waiting for an opening gate trigger matching ``event_begins`` (here `accumulation_begins`)  in the ``event_label`` (here `label`) column of the event input to start accumulating.
-            - Transform returns nothing and waits for a model in the registry.
-
-        - **accumulate**:
-
-            - Fit node accumulates data in a buffer and wait for a closing gate trigger matching ``event_begins`` (here `accumulation_ends`) in the ``event_label`` (here `label`) column of the event input to start fitting.
-            - Transform returns nothing and waits for a model in the registry.
-
-        - **transform**:
-
-            - Fit node is back to silence and waits for a new opening gate to recalibrate its model.
-            - Transform node could yet load the fitted model, applies it to the data and returns tranformed data.
+        In this case, there is no need for target labelling (``has_targets`` =`False`)
+        and the input data is of type pandas.DataFrame.
 
         It results in:
 
         .. image:: /../../timeflux_ml/doc/static/image/fittransform_io1.svg
            :align: center
 
-        Where:
-
-        - accumulation gate opens when events ports receives ::
-
-                                                         label
-            2018-11-19 10:57:04.948857320  accumulation_begins
-
-
-        - accumulation gate closes when events ports receives ::
-
-                                                         label
-            2018-11-19 10:57:27.910938531    accumulation_ends
-
-        - model stored in transform._model["values"] :
-
-            {'scaler': MinMaxScaler(copy=True, feature_range=(0, 1))}
-
-        - with parameters ::
-
-            transform._model["values"].named_steps['scaler'].data_max_ =  array([814.49725342])
-
-            transform._model["values"].named_steps['scaler'].data_min_ = array([736.10308838])
-
-
     Notes:
 
-        This node works together with a Fit node that initializes a sklearn pipeline with transformation steps, accumulates data, feed the model and save it in the registry.
-        Hence, for shapes compatibility purpose, the ``stack_method`` should be the same as the one specified in the Fit process.
-        Furthermore, the last step of the Pipeline should be a transformation, not a classifier (in which case, use node Predict).
-        Note that the modules are indeed imported dynamically in the pipeline but the dependencies must be satisfied in the environement.
+        This node works together with a Fit node that initializes and fits a sklearn Pipeline object with
+        estimator steps, that is sent through port with suffix 'model'.
+
+        Note also that the last step of the Pipeline should be a transformation, not a classifier
+        (in which case, one should use node Predict).
+
 
     References:
 
@@ -101,26 +61,23 @@ class Transform(Node):
     """
 
     def __init__(self, coords=None, set_columns=None, set_index=None):
-        """
-         Args:
-            set_columns (str|None): Whether or not the columns names of the input data should be transfered to the output data (only if the number of columns remains unchanged). Default: `True`.
-            set_index (str|None): Whether or not the index of the input data should be transfered to the output data (only if the number of rows remains unchanged). Default: `False`.
-        """
+
         self._model = None
+        self._coords = coords
         self._set_columns = set_columns
         self._set_index = set_index
 
     def update(self):
 
-        if 'pipeline' in self.i_fit.meta:
-            self._model = self.i_fit.meta['pipeline']['values']
+        if 'pipeline' in self.i_model.meta:
+            self._model = self.i_model.meta['pipeline']['values']
 
         # When we have no available model or when we have not received data,
         # there is nothing to do
-        if self._model is None or self.i.data is None or self.i.data.empty:
+        if self._model is None or not self.i.ready():
             return
 
-        if isinstance(self.i.data, xr.Dataset):
+        if isinstance(self.i.data, xr.DataArray):
             coords = dict(self.i.data.coords)
             coords.update(self._coords)
             self.o.data = xr.DataArray(data=self._model.transform(self.i.data.values),
