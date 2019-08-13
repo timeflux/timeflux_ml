@@ -8,7 +8,7 @@ from timeflux_ml.nodes.fit import Fit
 from timeflux_ml.nodes.transform import Transform
 
 # ------------------------------------------------------
-# Use-case #1 : Fit Pipeline on streaming data.
+# Use-case #1 : Not supervised fit Pipeline on pandas data
 # ------------------------------------------------------
 # params:
 #    has_targets = False

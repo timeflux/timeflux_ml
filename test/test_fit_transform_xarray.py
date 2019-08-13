@@ -6,7 +6,7 @@ from timeflux_ml.nodes.fit import Fit
 from timeflux_ml.nodes.transform import Transform
 
 # ------------------------------------------------------
-# Use-case #2 : Fit Pipeline on labelled epochs data.
+# Use-case #2 : Supervised fit Pipeline on xarray data
 # ------------------------------------------------------
 # params:
 #    has_targets = True
