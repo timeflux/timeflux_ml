@@ -8,7 +8,7 @@ class Transform(Node):
 
     This node expects a scikit pipeline from input port 'model'. Once the model is
     received, the node is ready.
-    Once the node ready, the node calls the transform method of the model on the.
+    Once the node ready, the node calls the transform method of the model on the
     input data values and return the transformed data.
 
     Attributes:
@@ -57,7 +57,7 @@ class Transform(Node):
 
     **To do** :
 
-        Since registry will soon be deprecated, model should be saved in the meta.
+        Preload the model from file.
 
     """
 

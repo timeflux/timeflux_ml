@@ -38,7 +38,7 @@ class Fit(Node):
     Attributes:
         i (Port): default input, expects DataFrame or DataArray.
         o_events (Port): event output, provides DataFrame.
-        o_model (Port): model output, provides meta. .
+        o_model (Port): model output, provides meta.
 
     Args:
         pipeline_steps (dict):  (name, module_name, method_name) Tuples to specify steps of the pipeline to fit.
@@ -53,6 +53,9 @@ class Fit(Node):
 
         In case the fitting is of type `supervised`, we systematically apply a LabelEncoder
         to the classes vector  in order to assure the compatibility of labelling,
+
+        Note also that the modules are indeed imported dynamically in the pipeline
+        but the dependencies must be satisfied in the environment.
 
     References:
 
