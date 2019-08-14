@@ -1,239 +1,162 @@
 import numpy as np
+import pandas as pd
 import json
+from threading import Thread
+from time import time, clock
 
-from itertools import cycle
-from functools import partial
-from importlib import import_module
+from collections import Counter
 
-from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import LabelEncoder
-
+import xarray as xr
 from timeflux.core.node import Node
-from timeflux.core.registry import Registry
+from timeflux.core.exceptions import WorkerInterrupt
+
+from copy import deepcopy
+
+from timeflux_ml.utils.sklearn_helpers import make_pipeline
 
 
 class Fit(Node):
-    """ Pipeline of transforms with a final estimator.
+    """ Construct and fit a sklearn Pipeline object
 
-    This node has 3 modes:
+    This node first constructs a sklearn Pipeline object given ``pipeline_steps`` and
+    ``pipeline_params``.
+    Then, when data is received, the node calls the method `fit` of the pipeline object
+    in a thread aside.
+    Once the model has fitted, the node sends an event in data of output port with suffix 'events'
+    and the fitted model in meta of output port with suffix 'model'.
 
-    - **silent**: do nothing but waiting for an opening gate trigger matching ``event_begins`` in the ``event_label`` column of the event input to change to mode `accumulate`
-    - **accumulate**: accumulate data in a buffer and wait for a closing gate trigger matching ``event_ends`` in the ``event_label`` column of the event input to change to mode `fit`
-    - **fit**: concatenate the buffer using method given in ``stack_method``, feed the model with the data, save it in the Registry and reset mode back to `silent`.
+    The fitting can be:
 
-    The learning can be:
-
-    - **supervised**:  if the training model requires to set `y` when calling the fit method, then data should be labeled in the meta, and ``has_targets`` set to `True` . Eventually, if ``context_key`` is given, the class of the data will be its value.
-    - **unsupervised**: if the training model does not require to set `y` when calling the fit method, then ``has_targets`` should be set to `False`
-
-    The model can handle:
-
-    - **continuous data**: if the node is applied on streaming data, then ``receives_epochs`` should be `False`  (eg. scaling, pca, ... ).
-    - **epochs**: if the node expects input data with strictky the same shape, then ``receives_epochs`` should be `True` (eg. XDawn, Covariances, ...).
+    - **supervised**:  if the training model requires to set `y` when calling the fit method,
+    then parameter ``has_targets`` set to `True` and the data should be od type DataArray with
+    dimension `target`.
+    - **unsupervised**: if the training model does not require to set `y` when calling the fit method,
+     then parameter ``has_targets`` should be set to `False` and data can be either of type DataFrame
+     or DataArray.
 
     Attributes:
-        i (Port): default input, expects DataFrame and meta.
-        i_events (Port): event input, expects DataFrame.
+        i (Port): default input, expects DataFrame or DataArray.
+        o_events (Port): event output, provides DataFrame.
+        o_model (Port): model output, provides meta.
+
+    Args:
+        pipeline_steps (dict):  string -> string. Keys are step names and values are estimator class names
+                                                  (eg. {'scaler': 'sklearn.preprocessing.MinMaxScaler'})
+        pipeline_params (dict): string -> object. Parameters passed to the fit method of
+                                                each step, where each parameter name is prefixed
+                                                such that parameter `p` for step `s` has key `s__p`.
+                                                (eg. {'scaler__feature_range': (.1, .99)})
+        event_label_base (string|None): The label prefix of the output events stream to inform that model starts/ends fitting. .
+        has_targets (bool, True): If True, model is supervised and meta should have a field "label"; if False,
+
 
     Notes:
+        In case the fitting is of type `supervised`, we systematically apply a LabelEncoder
+        to the classes vector  in order to assure the compatibility of labelling,
 
-        To assure the compatibility of labelling, we apply a LabelEncoder to the classes vector.
+        Note also that the modules are indeed imported dynamically in the pipeline
+        but the dependencies must be satisfied in the environment.
 
     References:
 
-        See the documentation of `sklearn.pipeline.Pipeline <https://scikit-learn.org/stable/modules/generated/sklearn.pipeline.Pipeline.html#sklearn.pipeline.Pipeline>`_
-
-    **To do** :
-
-        Since registry will soon be deprecated, model should be saved in the meta.
+        See the documentation of `sklearn.pipeline.Pipeline
+        <https://scikit-learn.org/stable/modules/generated/sklearn.pipeline.Pipeline.html#sklearn.pipeline.Pipeline>`_
 
     """
 
-    def __init__(self, event_begins, event_ends, event_label, stack_method, steps_config, fit_params=None,  has_targets=True, receives_epochs=True, registry_key="fit_pipeline", context_key=None):
-        """
-        Args:
-            event_begins (string): The marker name on which the node starts accumulating data.
-            event_ends (string): The marker name on which the node stops accumulating data and fits the model.
-            event_label (string): The column to match for event_trigger.
-            stack_method (string|int): Method to use for stacking ('vstack' to use `numpy.vstack <https://docs.scipy.org/doc/numpy-1.15.0/reference/generated/numpy.vstack.html>`_ ;  'hstack' to use `numpy.hstack <https://docs.scipy.org/doc/numpy-1.15.0/reference/generated/numpy.hstack.html>`_ ; int (`0`, `1`, or `2`) to use `numpy.stack <https://docs.scipy.org/doc/numpy-1.15.0/reference/generated/numpy.stack.html>`_ on the specified axis.
-            steps_config (list):  (name, module_name, method_name) Tuples to specify steps of the pipeline to fit.
-            **fit_params (dict): string -> object.  Parameters passed to the fit method of
-                                                    each step, where each parameter name is prefixed
-                                                    such that parameter `p` for step `s` has key `s__p`.
-            has_targets (bool, True): If True, model is supervised and meta should have a field "label"; if False, model is unsupervised and y is set to None. Default: `True` .
-            receives_epochs (bool, True): if True, the node expects input data with strictly the same shapes. Default: `True` .
-            registry_key (str): The key on which to save the fitted model. Default: `fit_pipeline`.
-            context_key (str, None): The key on which the target is given. If None, the all "context" content is considered for label. Only if has_targets is True. Default: `None`.
-        """
+    def __init__(self, pipeline_steps, pipeline_params=None,
+                       event_label_base='model-fitting', has_targets=True):
 
-        self._event_begins = event_begins
-        self._event_ends = event_ends
-        self._event_label = event_label
-        if type(steps_config)==tuple: steps_config=[steps_config]
-        self._steps_config = steps_config
-        if fit_params is None: fit_params = {}
-        self._fit_params = fit_params
-        self._registry_key = registry_key
+        super().__init__()
+        self._pipeline_steps = pipeline_steps
+        self._pipeline_params = pipeline_params or {}
+        self._event_label_base = event_label_base
+
         self._has_targets = has_targets
-        self._receives_epochs = receives_epochs
-        self._context_key = context_key
-
-        if stack_method == "vstack":
-            self._stack = np.vstack
-        elif stack_method == "hstack":
-            self._stack = np.hstack
-        elif type(stack_method) == int:
-            self._stack = partial(np.stack, axis=stack_method)
-        self._stackable = None
-
         self._reset()
+        self._thread = None
+        self._thread_status = None
 
-
-    def _init_model(self):
-        if not([len(steps) for steps in self._steps_config] == [3]*len(self._steps_config)):
-            raise ValueError ("Parameter steps should be a list of (name, module_name, transform_name) tuples")
-
-        self._steps = []
-        for (name, transform_name, module_name) in self._steps_config:
-            try:
-                m = import_module(module_name)
-            except ImportError:
-                raise ImportError ("Could not import module {module_name}".format(module_name=module_name))
-            try:
-                transform = getattr(m, transform_name)()
-            except AttributeError:
-                raise ValueError ("Module {module_name} has no object {transform_name}".format(module_name=module_name, transform_name=transform_name))
-            self._steps.append((name, transform))
-        self._pipeline = Pipeline(steps=self._steps, memory=self._memory)
-        try:
-            self._pipeline.set_params(**self._fit_params)
-        except ValueError:
-            raise ValueError  ("Could not set params of pipeline. Check the validity. ")
-        self._le = LabelEncoder()
-
-
-    def _next(self):
-        self._trigger = next(self._trigger_iterator)
-        self._mode = next(self._mode_iterator)
-
-    def update(self):
-        print(self._mode)
-
-        # Detect onset to eventually update  mode
-        if self.i_events.data is not None:
-            if not self.i_events.data.empty:
-                matches = self.i_events.data[self.i_events.data[
-                    self._event_label] == self._trigger]
-                if not matches.empty:
-                    self._next()
-                    if self.i.data is not None:
-                        if not self.i.data.empty:
-                            # troncate data to onset if not receiving epochs
-                            if not self._receives_epochs:
-                                if self._mode == "accumulate":
-                                    self.i.data = self.i.data[matches.index[0]:]
-                                elif self._mode == "fit":
-                                    self.i.data = self.i.data[:matches.index[0]]
-                                # TODO: handle case where begins & ends triggers are received at the same time
-
-        # check mode
-        if self._mode == "silent":
-            # Do nothing
-            pass
-
-        elif self._mode in ["accumulate", "fit"] :
-            # Append data
-            if self._valid_input():
-                # Append data
-                self._buffer_values.append(self.i.data.values)
-
-                # Append label
-                if self._has_targets:
-                    if self._context_key is not None:
-                        if type(self.i.meta["epoch"]["context"]) == str : self.i.meta["epoch"]["context"] = json.loads(self.i.meta["epoch"]["context"])
-                        self._buffer_label.append(self.i.meta["epoch"]["context"][self._context_key])
-                    else:
-                        self._buffer_label.append(self.i.meta["epoch"]["context"])
-
-        if self._mode == "fit":
-
-            self._fit()
-
-            # Save in registry
-            if self._has_targets:
-                model = {"values": self._pipeline, "label": self._le}
-            else:
-                model = {"values": self._pipeline}
-
-            setattr(Registry, self._registry_key, model)
-            self.logger.info("Pipeline {registry_key} has been successfully saved in the registry".format(registry_key=self._registry_key))
-
-            # Reset states
-            self._reset()
-
-    def _fit(self):
-
-        # stack buffer
-        _X = self._stack(self._buffer_values)
-
-        if self._has_targets:
-            _y = np.array(self._buffer_label)
-            # Fit y model and save into the registery
-            _y = self._le.fit_transform(_y)
-        else:
-            _y = None
-
-        # Fit X model
-        self._pipeline.fit(_X, _y)
-
-    def _valid_input(self):
-
-        # Check input data and meta
-        if self.i.data is not None:
-            if not self.i.data.empty:
-
-                if self._receives_epochs :
-                    if self._shape is None:
-                        self._shape = self.i.data.shape
-
-                    # Check data shape
-                    if self.i.data.shape != self._shape:
-                        self.logger.warning("FitPipeline received an epoch with invalid shape. Expecting {expected_shape}, "
-                                         "received {actual_shape}.".format(expected_shape=self._shape, actual_shape=self.i.data.shape))
-                        return False
-                if self._has_targets:
-                # Check valid meta is present
-                    if (self.i.meta is None) | (self.i.meta is not None) & ("epoch" not in self.i.meta) |((self.i.meta is not None) & ("epoch" not in self.i.meta) & ("context" not in self.i.meta['epoch'])):
-                        self.logger.warning("FitPipeline received an epoch with no valid meta")
-                        return False
-                    elif self._context_key is not None :
-                        if self._context_key not in self.i.meta["epoch"]["context"]:
-                            self.logger.warning("FitPipeline received an epoch with no valid meta: {context_key} not in meta['epoch']['context]".format(context_key=self._context_key))
-                            return False
-
-                if self._stackable is None:
-                    # check if the features are stackable
-                    try:
-                        _ = self._stack([self.i.data.values, self.i.data.values])
-                    except np.core._internal.AxisError:
-                        raise ("Could not concatenate data.")
-                    self._stackable = True
-                return True
+        # todo: preload model from file.
 
     def _reset(self):
-
-        # Reset buffers
-        self._buffer_values = []
-        if self._has_targets: self._buffer_label = []
-        self._shape = None
-
-        # Reset models
         self._le = LabelEncoder()
-        self._init_model()
+        self._pipeline = make_pipeline(self._pipeline_steps, self._pipeline_params)
+        self._thread = None
+        self._thread_status = None
 
-        # Reset iterator states
-        self._trigger_iterator = cycle([self._event_begins, self._event_ends])
-        self._mode_iterator = cycle(["silent", "accumulate", "fit"])
-        self._trigger = next(self._trigger_iterator)
-        self._mode = next(self._mode_iterator)
+    def update(self):
 
+        # At this point, we are sure that we have some data to process
+        self.o_events.data = pd.DataFrame()
+
+        if self._thread_status is None:
+            # When we have not received data, there is nothing to do
+            if not self.i.ready():
+                return
+            self._fit()
+
+        if self._thread_status == 'FAILED':
+            raise WorkerInterrupt('Estimator fit failed.')
+
+        elif self._thread_status == 'SUCCESS':
+            if self._has_targets:
+                model = {'values': deepcopy(self._pipeline), 'label': deepcopy(self._le)}
+            else:
+                model = {'values': deepcopy(self._pipeline)}
+
+            self.o_model.meta.update({'pipeline': model})
+
+            self.logger.info(f'The model {self._pipeline} was successfully fitted. ')
+
+            # send an event to announce that fitting is ready.
+            if self._event_label_base is not None:
+                self.o_events.data = self.o_events.data.append(pd.DataFrame(index=[pd.Timestamp(time(), unit='s')],
+                                                                            columns=['label', 'data'],
+                                                                            data=[[self._event_label_base + '_ends',
+                                                                                   '']]))
+
+            self._reset()
+        else:  # self._thread_status == 'WORKING'
+            return
+
+    def _fit(self):
+        self._thread_status = 'WORKING'
+        self._y = None
+        _meta = {}
+        self._X = self.i.data.values
+        if self._has_targets:
+            if isinstance(self.i.data, xr.DataArray):
+                self._y = self.i.data.target.values
+                # self._y = self.i.data.target.values
+                self._y = self._le.fit_transform(self._y)
+                y_count = dict(Counter(self._y))
+                _meta['y_count'] = {self._le.inverse_transform([k])[0]: v for (k, v) in
+                                    y_count.items()}  # convert keys to string and dump
+            else:
+                raise ValueError('If `has_target` is True, the node expects '
+                                 'a DataArray with dimension "target"')
+
+        _meta['X_shape'] = self._X.shape
+
+        # save the models in the meta
+        self.o_model.meta.update({'X': self._X, 'y': self._y})
+
+        self.logger.info('Please wait, the model is fitting... ')
+
+        if self._event_label_base is not None:
+            self.o_events.data = pd.DataFrame(index=[pd.Timestamp(time(), unit='s')],
+                                              columns=['label', 'data'],
+                                              data=[[self._event_label_base + '_begins', json.dumps(_meta)]])
+
+        # Fit X model in a thread
+        self._thread = Thread(target=self._fit_thread)
+        self._thread.start()
+
+    def _fit_thread(self):
+        try:
+            self._pipeline.fit(self._X, self._y)
+            self._thread_status = 'SUCCESS'
+        except ValueError:
+            self._thread_status = 'FAILED'

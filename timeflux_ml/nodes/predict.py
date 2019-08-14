@@ -1,89 +1,92 @@
-
-import numpy as np
-
-from functools import partial
+import pandas as pd
 
 from timeflux.core.node import Node
-from timeflux.core.registry import Registry
-
 
 
 class Predict(Node):
-    """   Applies final step of pipeline .
+    """ Predict the final classification step of a model on testing data.
 
-    This node loads a scikit pipeline saved in the Registry.
-    When it receives data, it reshapes it using the specified ``stack_method`` and calls the predict method.
-    It adds a field in the meta with key ``meta_key`` and value the prediction.
+    This node expects a scikit pipeline from input port 'model'. Once the model is
+    received, the node is ready.
+    Once ready, the node calls `predict` method of the model on the
+    input data values.
+    It returns the input DataArray with updated dimension 'target'.
 
     Attributes:
-        i (Port): default input, expects DataFrame and meta.
-        o (Port): default output, provides DataFrame and meta.
-
-
-    Example:
-
-        In this example, we  show a non-adaptive ERP online classifier.
-
-        The following graph replays a set of EEG data and the corresponding events stream.
-
-        We choose the following riemannian pipeline:
-
-            - ERPCovariances
-            - Projection on TangentSpace
-            - Logistic Regression
-
-        In this case, there is of course need for epoching before (``receives_epoch`` = `True`), and for target labelling (``has_targets`` =`True`)
-        and the data should be concatenated on the first axis (``stack_method`` = `0`) to ensure that X is of shape  of shape (n_trials, n_channels, n_samples) as expected from first transformation step instance.
-
-
-        The corresponding graph is:
-
-        .. literalinclude:: /../../timeflux_ml/test/graphs/fit_predict1.yaml
-           :language: yaml
-
+        i_model (Port): model input, expects meta.
+        i (Port): default input, expects DataArray and meta.
+        o (Port): default output, provides DataArray and meta.
 
     References:
 
-        See the documentation of `sklearn.pipeline.Pipeline <https://scikit-learn.org/stable/modules/generated/sklearn.pipeline.Pipeline.html#sklearn.pipeline.Pipeline>`_
+        See the documentation of `sklearn.pipeline.Pipeline
+        <https://scikit-learn.org/stable/modules/generated/sklearn.pipeline.Pipeline.html#sklearn.pipeline.Pipeline>`_
 
     **To do** :
 
-        Since registry will soon be deprecated, model should be saved in the meta.
+        Preload the model from file.
 
     """
 
-    def __init__(self, stack_method, registry_key="fit_pipeline", meta_key="pred" ):
-        """
-         Args:
-            stack_method (string|int): Method to use for stacking ('vstack' to use `numpy.vstack <https://docs.scipy.org/doc/numpy-1.15.0/reference/generated/numpy.vstack.html>`_ ;  'hstack' to use `numpy.hstack <https://docs.scipy.org/doc/numpy-1.15.0/reference/generated/numpy.hstack.html>`_ ; int (`0`, `1`, or `2`) to use `numpy.stack <https://docs.scipy.org/doc/numpy-1.15.0/reference/generated/numpy.stack.html>`_ on the specified axis.
-            registry_key (str): The key on which to load the fitted models. Default: `fit_pipeline`.
-            meta_key (str): The key to add in the output meta with the predicted label Default: `pred`.
+    def __init__(self):
 
-        """
-
-        self._registry_key = registry_key
-        if stack_method == "vstack":
-            self._stack = np.vstack
-        elif stack_method == "hstack":
-            self._stack = np.hstack
-        elif type(stack_method) == int:
-            self._stack = partial(np.stack, axis=stack_method)
-        self._stackable = None
+        super().__init__()
         self._model = None
-        self._meta_key = meta_key
 
     def update(self):
+        if 'pipeline' in self.i_model.meta:
+            self._model = self.i_model.meta['pipeline']
+            self.logger.info(f'Node Predict received the fitted model {self._model}')
+        # When we have no available model or when we have not received data,
+        # there is nothing to do
+        if self._model is None or not self.i.ready():
+            return
 
-        if (self._model is None) & (not hasattr(Registry, self._registry_key)) :
-            self.o.data = None
-        elif (self._model is None) & (hasattr(Registry, self._registry_key)):
-            self._model = getattr(Registry, self._registry_key)
-        if self._model is not None:
-            if self.i.data is not None:
-                self.o = self.i
-                if not self.i.data.empty:
-                    _X = self._stack([self.i.data.values])
-                    # predict data label
-                    if self.o.meta is None: self.o.meta={}
-                    self.o.meta[self._meta_key] = self._model["label"].inverse_transform(self._model["values"].predict(_X))[0]
+        self.o = self.i
+        _X = self.o.data.values
+        self.o.data.target.values = self._model['label'].inverse_transform(self._model['values'].predict(_X))
 
+
+class PredictProba(Node):
+    """ Estimate the probability of the final classification step of a model on testing data.
+
+    This node expects a scikit pipeline from input port 'model'. Once the model is
+    received, the node is ready.
+    Once ready, the node calls `predict_proba` method of the model on the
+    input data values.
+    It returns a DataFrame with as many columns as the model has _classes and as many rows as
+    the data has observations, with values are the probability of the class to be observed.
+
+    Attributes:
+        i_model (Port): model input, expects meta.
+        i (Port): default input, expects DataArray and meta.
+        o (Port): default output, provides DataArray and meta.
+
+    References:
+
+        See the documentation of `sklearn.pipeline.Pipeline
+        <https://scikit-learn.org/stable/modules/generated/sklearn.pipeline.Pipeline.html#sklearn.pipeline.Pipeline>`_
+
+    **To do** :
+
+        Preload the model from file.
+    """
+
+    def __init__(self):
+
+        super().__init__()
+        self._model = None
+
+    def update(self):
+        if 'pipeline' in self.i_model.meta:
+            self._model = self.i_model.meta['pipeline']
+
+        # When we have no available model or when we have not received data,
+        # there is nothing to do
+        if self._model is None or not self.i.ready():
+            return
+        self.o.meta = self.i.meta
+        _X = self.i.data.values
+        _proba = self._model['values'].predict_proba(_X)
+        classes_ = self._model['values'].classes_
+        self.o.data = pd.DataFrame(data=_proba, columns=self._model['label'].inverse_transform(classes_))
