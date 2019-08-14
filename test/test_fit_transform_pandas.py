@@ -21,7 +21,8 @@ from timeflux_ml.nodes.transform import Transform
 num_cols = 5
 data = DummyData(rate=10, jitter=.05, num_cols=num_cols)
 node_fit = Fit(
-    pipeline_steps={'scaler': 'sklearn.preprocessing.MinMaxScaler'})
+    pipeline_steps={'scaler': 'sklearn.preprocessing.MinMaxScaler'},
+    has_targets=False)
 
 def test_fit_no_data():
     """Fit received empty DataFrame no data"""
