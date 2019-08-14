@@ -1,7 +1,8 @@
-from importlib import import_module
 from sklearn.pipeline import Pipeline
+from timeflux_ml.utils.import_helpers import make_object
 
-def construct_pipeline(steps, params):
+
+def make_pipeline(steps, params):
     """
 
     Args:
@@ -14,17 +15,8 @@ def construct_pipeline(steps, params):
 
     """
     step_estimators = []
-    for step_name, step_method in steps.items():
-        module_name, estimator_name = step_method.rsplit('.', 1)
-
-        try:
-            module = import_module(module_name)
-        except ImportError:
-            raise ImportError(f'Could not import module {module_name}')
-        try:
-            step_estimator = getattr(module, estimator_name)()
-        except AttributeError:
-            raise ValueError(f'Module {module_name} has no object {estimator_name}')
+    for step_name, step_fullname in steps.items():
+        step_estimator = make_object(step_fullname)
         step_estimators.append((step_name, step_estimator))
     pipeline = Pipeline(steps=step_estimators)
     try:
