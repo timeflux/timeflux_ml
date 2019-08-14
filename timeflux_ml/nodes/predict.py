@@ -30,6 +30,7 @@ class Predict(Node):
 
     def __init__(self):
 
+        super().__init__()
         self._model = None
 
     def update(self):
@@ -72,6 +73,8 @@ class PredictProba(Node):
     """
 
     def __init__(self):
+
+        super().__init__()
         self._model = None
 
     def update(self):

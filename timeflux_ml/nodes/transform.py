@@ -63,6 +63,7 @@ class Transform(Node):
 
     def __init__(self, coords=None, set_columns=None, set_index=None):
 
+        super().__init__()
         self._model = None
         self._coords = coords
         self._set_columns = set_columns

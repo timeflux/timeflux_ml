@@ -68,6 +68,7 @@ class Fit(Node):
     def __init__(self, pipeline_steps, pipeline_params=None,
                        event_label_base='model-fitting', has_targets=True):
 
+        super().__init__()
         self._pipeline_steps = pipeline_steps
         self._pipeline_params = pipeline_params or {}
         self._event_label_base = event_label_base
@@ -101,9 +102,9 @@ class Fit(Node):
 
         elif self._thread_status == 'SUCCESS':
             if self._has_targets:
-                model = {"values": deepcopy(self._pipeline), "label": deepcopy(self._le)}
+                model = {'values': deepcopy(self._pipeline), 'label': deepcopy(self._le)}
             else:
-                model = {"values": deepcopy(self._pipeline)}
+                model = {'values': deepcopy(self._pipeline)}
 
             self.o_model.meta.update({'pipeline': model})
 
