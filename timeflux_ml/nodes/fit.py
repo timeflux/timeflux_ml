@@ -13,7 +13,7 @@ from timeflux.core.exceptions import WorkerInterrupt
 
 from copy import deepcopy
 
-from timeflux_ml.utils.sklearn_helpers import construct_pipeline
+from timeflux_ml.utils.sklearn_helpers import make_pipeline
 
 
 class Fit(Node):
@@ -41,16 +41,17 @@ class Fit(Node):
         o_model (Port): model output, provides meta.
 
     Args:
-        pipeline_steps (dict):  (name, module_name, method_name) Tuples to specify steps of the pipeline to fit.
-        pipeline_params (dict): string -> object.  Parameters passed to the fit method of
+        pipeline_steps (dict):  string -> string. Keys are step names and values are estimator class names
+                                                  (eg. {'scaler': 'sklearn.preprocessing.MinMaxScaler'})
+        pipeline_params (dict): string -> object. Parameters passed to the fit method of
                                                 each step, where each parameter name is prefixed
                                                 such that parameter `p` for step `s` has key `s__p`.
+                                                (eg. {'scaler__feature_range': (.1, .99)})
         event_label_base (string|None): The label prefix of the output events stream to inform that model starts/ends fitting. .
         has_targets (bool, True): If True, model is supervised and meta should have a field "label"; if False,
 
 
     Notes:
-
         In case the fitting is of type `supervised`, we systematically apply a LabelEncoder
         to the classes vector  in order to assure the compatibility of labelling,
 
@@ -65,7 +66,7 @@ class Fit(Node):
     """
 
     def __init__(self, pipeline_steps, pipeline_params=None,
-                 event_label_base='model-fitting', has_targets=True):
+                       event_label_base='model-fitting', has_targets=True):
 
         self._pipeline_steps = pipeline_steps
         self._pipeline_params = pipeline_params or {}
@@ -80,7 +81,7 @@ class Fit(Node):
 
     def _reset(self):
         self._le = LabelEncoder()
-        self._pipeline = construct_pipeline(self._pipeline_steps, self._pipeline_params)
+        self._pipeline = make_pipeline(self._pipeline_steps, self._pipeline_params)
         self._thread = None
         self._thread_status = None
 
@@ -149,10 +150,10 @@ class Fit(Node):
                                               data=[[self._event_label_base + '_begins', json.dumps(_meta)]])
 
         # Fit X model in a thread
-        self._thread = Thread(target=self._fit_pipeline)
+        self._thread = Thread(target=self._fit_thread)
         self._thread.start()
 
-    def _fit_pipeline(self):
+    def _fit_thread(self):
         try:
             self._pipeline.fit(self._X, self._y)
             self._thread_status = 'SUCCESS'
