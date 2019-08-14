@@ -26,8 +26,8 @@ n_filters = 2
 n_classes = 2  # 'foo' and 'bar'
 
 node_fit = Fit(
-    pipeline_steps={"xdawn": "pyriemann.spatialfilters.Xdawn"},
-    pipeline_params={"xdawn__nfilter": n_filters},
+    pipeline_steps={'xdawn': 'pyriemann.spatialfilters.Xdawn'},
+    pipeline_params={'xdawn__nfilter': n_filters},
     has_targets=True)
 target = np.array(['foo', 'bar']).repeat(50)
 
@@ -54,7 +54,7 @@ def test_fit_data():
                                  [0.20890224, -0.34419412, 0.48460301, -0.6253412, -0.46043302],
                                  [-0.76839534, 0.42929239, 0.3013263, 0.28496854, -0.23080738],
                                  [0.09069146, 0.13413278, -0.7122559, 0.65923861, -0.17854816]])
-    np.testing.assert_array_almost_equal(node_fit.o_model.meta['pipeline']['values'].named_steps["xdawn"].filters_,
+    np.testing.assert_array_almost_equal(node_fit.o_model.meta['pipeline']['values'].named_steps['xdawn'].filters_,
                                          expected_filters, 6)
 
 
