@@ -29,11 +29,11 @@ class Fit(Node):
     The fitting can be:
 
     - **supervised**:  if the training model requires to set `y` when calling the fit method,
-    then parameter ``has_targets`` set to `True` and the data should be od type DataArray with
-    dimension `target`.
+        then parameter ``has_targets`` set to `True` and the data should be od type DataArray with
+        dimension `target`.
     - **unsupervised**: if the training model does not require to set `y` when calling the fit method,
-     then parameter ``has_targets`` should be set to `False` and data can be either of type DataFrame
-     or DataArray.
+        then parameter ``has_targets`` should be set to `False` and data can be either of type DataFrame
+        or DataArray.
 
     Attributes:
         i (Port): default input, expects DataFrame or DataArray.
@@ -41,14 +41,15 @@ class Fit(Node):
         o_model (Port): model output, provides meta.
 
     Args:
-        pipeline_steps (dict):  string -> string. Keys are step names and values are estimator class names
-                                                  (eg. {'scaler': 'sklearn.preprocessing.MinMaxScaler'})
+        pipeline_steps (dict):  string -> string. Keys are step names and values are
+            estimator class names (eg. {'scaler': 'sklearn.preprocessing.MinMaxScaler'})
         pipeline_params (dict): string -> object. Parameters passed to the fit method of
-                                                each step, where each parameter name is prefixed
-                                                such that parameter `p` for step `s` has key `s__p`.
-                                                (eg. {'scaler__feature_range': (.1, .99)})
-        event_label_base (string|None): The label prefix of the output events stream to inform that model starts/ends fitting. .
-        has_targets (bool, True): If True, model is supervised and meta should have a field "label"; if False,
+            each step, where each parameter name is prefixed such that parameter `p` for
+            step `s` has key `s__p`. (eg. {'scaler__feature_range': (.1, .99)})
+        event_label_base (string|None): The label prefix of the output events stream to
+            inform that model starts/ends fitting.
+        has_targets (bool, True): If True, model is supervised and meta should have a
+            field "label"; if False,
 
 
     Notes:

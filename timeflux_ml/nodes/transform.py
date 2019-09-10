@@ -17,24 +17,25 @@ class Transform(Node):
         o (Port): default output, provides DataFrame or DataArray and meta.
 
     Args:
-        coords (dict|None): Dictionary-like container of coordinate arrays in case the data
-                    is of type DataArray.
-        set_columns ('all'|list|None): List of columns to be assigned to the output data in case the
-                    data is of type DataFrame. If 'all', columns remain unchanged.
-                    (only if the number of columns remains unchanged).
-        set_index ('all'|'last'|None): Method to use to set the index to the output data in case the
-                    data is of type DataFrame. If 'all', index remain unchanged. If 'last', the
-                    transformed data should have only one row and the index is set to the last timestamp
-                    of the input data.
+        coords (dict|None): Dictionary-like container of coordinate arrays in case the
+            data is of type DataArray.
+        set_columns (str|list|None): List of columns to be assigned to the output data
+            in case the data is of type DataFrame. If 'all', columns remain unchanged.
+            (only if the number of columns remains unchanged).
+        set_index (str|None): Method to use to set the index to the output data
+            in case the data is of type DataFrame. If 'all', index remain unchanged.
+            If 'last', the transformed data should have only one row and the index is
+            set to the last timestamp of the input data.
 
     Example:
 
-        In this example, we stream a respiratory signal, we accumulate data over a calibration period to feed a min-max scaler.
-        Once the model is fitted, we apply the transformation to the signal.
+        In this example, we stream a respiratory signal, we accumulate data over a
+        calibration period to feed a min-max scaler. Once the model is fitted, we apply
+        the transformation to the signal.
 
         We choose the transformation `MinMaxScaler` from `sklearn.preprocessing`.
 
-        In this case, there is no need for target labelling (``has_targets`` =`False`)
+        In this case, there is no need for target labelling (``has_targets`` = `False`)
         and the input data is of type pandas.DataFrame.
 
         It results in:
