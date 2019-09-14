@@ -1,7 +1,6 @@
 # Timeflux ML plugin
 
-This plugin provides timeflux nodes and meta-nodes for real time
-machine learning on time series.
+This plugin provides timeflux nodes and meta-nodes for real time machine learning on time series.
 
 ## Installation
 
@@ -24,4 +23,3 @@ This module contains nodes to transform data thanks to a previously fitted pipel
 
 ### predict
 This module contains nodes to predict the label of data thanks to a previously fitted pipeline.
-
