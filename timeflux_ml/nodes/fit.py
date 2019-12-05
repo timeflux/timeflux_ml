@@ -82,6 +82,7 @@ class Fit(Node):
 
     def _reset(self):
         self._le = LabelEncoder()
+        print(f'self._pipeline_params {self._pipeline_params}')
         self._pipeline = make_pipeline(self._pipeline_steps, self._pipeline_params)
         self._thread = None
         self._thread_status = None
