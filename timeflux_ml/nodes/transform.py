@@ -80,6 +80,9 @@ class Transform(Node):
         if self._model is None or not self.i.ready():
             return
 
+        # Propagate meta
+        self.o.meta = self.i.meta
+
         if isinstance(self.i.data, xr.DataArray):
             coords = dict(self.i.data.coords)
             coords.update(self._coords)
