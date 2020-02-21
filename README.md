@@ -2,6 +2,9 @@
 
 This plugin provides timeflux nodes and meta-nodes for real time machine learning on time series.
 
+> ⚠️ **Deprecated**  
+> Use the [Pipeline node](https://github.com/timeflux/timeflux/blob/master/timeflux/nodes/ml.py) instead.
+
 ## Installation
 
 First, make sure that [Timeflux is installed](https://github.com/timeflux/timeflux).
